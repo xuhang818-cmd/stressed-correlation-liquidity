@@ -140,16 +140,6 @@ def screen(rets, corr_redundant=CORR_REDUNDANT):
     return keep
 
 
-def main():
-    os.makedirs(OUTDIR, exist_ok=True)
-    rets = download_candidates(list(CANDIDATES))
-    screen(rets)
-
-
-if __name__ == "__main__":
-    main()
-
-
 # ===================== Day 2: interactive explorer =====================
 # Self-contained HTML (no server, no extra deps): embeds the linkage tree Z, the
 # labels, and the correlation matrix, then re-cuts the tree in JavaScript as you drag
@@ -223,3 +213,13 @@ function render(){
 sld.addEventListener("input",render); render();
 </script></body></html>"""
 # ======================================================================
+
+
+def main():
+    os.makedirs(OUTDIR, exist_ok=True)
+    rets = download_candidates(list(CANDIDATES))
+    screen(rets)
+
+
+if __name__ == "__main__":
+    main()

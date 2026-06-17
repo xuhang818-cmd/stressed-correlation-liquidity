@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>Basket redundancy explorer</title><style>
+body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:860px;margin:32px auto;padding:0 16px;color:#1f2933}
+h1{font-size:20px;margin:0 0 4px} .sub{color:#667;margin:0 0 20px}
+.ctl{background:#f4f6f9;border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:18px}
+input[type=range]{width:100%} .big{font-size:30px;font-weight:700;color:#1f3864}
+.kept{font-family:ui-monospace,Menlo,monospace;background:#eef2f8;border-radius:6px;padding:8px 10px;display:inline-block;margin-top:6px}
+.cl{border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;margin:8px 0}
+.rep{font-weight:700;color:#1f3864} .drop{color:#99a;text-decoration:line-through}
+.mono{font-family:ui-monospace,Menlo,monospace} .tag{color:#8893a5;font-size:13px}
+</style></head><body>
+<h1>Basket redundancy explorer</h1>
+<p class="sub">Drag the threshold: any two assets whose correlation exceeds it are treated as
+near-duplicates and merged; one representative per cluster is kept. The tree is fixed &mdash;
+you are just choosing where to cut it.</p>
+<div class="ctl">
+  <label>merge if correlation &gt; <b id="tval"></b></label>
+  <input type="range" id="sld" min="0.50" max="0.99" step="0.01">
+  <div style="margin-top:10px"><span class="big" id="cnt"></span> <span class="tag">assets remain (of <span id="tot"></span>)</span></div>
+  <div class="kept mono" id="kept"></div>
+</div>
+<div id="clusters"></div>
+<script>
+const D = {"Z": [[4, 5, 0.08921305687418091], [0, 1, 0.1038901223848826], [2, 3, 0.12287746274595124], [14, 15, 0.1776542509793187], [8, 13, 0.2685250134983528], [11, 16, 0.2813473275052726], [7, 18, 0.37884024730221444], [6, 17, 0.45134792581202143], [9, 19, 0.6165674337924231], [10, 20, 0.7937455098612702], [21, 22, 1.0318911384480258], [12, 23, 1.2298250351008158]], "labels": ["SPY", "IWM", "EFA", "EEM", "TLT", "IEF", "LQD", "HYG", "TIP", "DBC", "GLD", "VNQ", "UUP"], "names": ["US large-cap equity", "US small-cap equity", "Intl developed equity", "EM equity", "Long Treasuries", "Intermediate Treasuries", "IG credit", "HY credit", "TIPS (inflation-linked)", "Broad commodities", "Gold", "US REITs", "US dollar index"], "corr": [[1.0, 0.8961098776151174, 0.8861082284852314, 0.8259685956989327, -0.3097447460384525, -0.2983190607772727, 0.2021414013191121, 0.6830218159910454, -0.10214743831476916, 0.40464788422348025, 0.05971642910309593, 0.7514322080875707, -0.18738756573374957], [0.8961098776151174, 1.0, 0.8152695979878537, 0.7620365739107074, -0.29071865202793523, -0.280090135089555, 0.168804795570348, 0.6247978320461808, -0.08922329753690832, 0.3779665465370335, 0.058638110427519936, 0.7674858617118254, -0.18035833116734007], [0.8861082284852314, 0.8152695979878537, 1.0, 0.8771225372540488, -0.28926918814484154, -0.2649486386827893, 0.22787682755320884, 0.6618908983168478, -0.06553460478541763, 0.4460553800062969, 0.15915921115562193, 0.6924601017407318, -0.40192012177414765], [0.8259685956989327, 0.7620365739107074, 0.8771225372540488, 1.0, -0.27132609018450143, -0.27029010680353993, 0.17908324341074655, 0.6056191541507496, -0.09092166957262854, 0.4443462033470353, 0.17751286153508788, 0.6632325184387817, -0.2917048115304653], [-0.3097447460384525, -0.29071865202793523, -0.28926918814484154, -0.27132609018450143, 1.0, 0.9107869431258191, 0.545371715748721, -0.1318553016794861, 0.7017938811419079, -0.23318239914799782, 0.16872822950566213, -0.1588424495161699, -0.07162784005192464], [-0.2983190607772727, -0.280090135089555, -0.2649486386827893, -0.27029010680353993, 0.9107869431258191, 1.0, 0.5645654269794373, -0.09237090684713362, 0.7611560918613866, -0.20393635212211156, 0.22241409370956097, -0.1532882121114213, -0.1540590997236346], [0.2021414013191121, 0.168804795570348, 0.22787682755320884, 0.17908324341074655, 0.545371715748721, 0.5645654269794373, 1.0, 0.4494745552706065, 0.5360190798357773, 0.0733560620633416, 0.16129448641102867, 0.18383408175678068, -0.1786623533228129], [0.6830218159910454, 0.6247978320461808, 0.6618908983168478, 0.6056191541507496, -0.1318553016794861, -0.09237090684713362, 0.4494745552706065, 1.0, 0.08656351974449616, 0.3521704946309225, 0.048925499547473585, 0.5304690629841042, -0.20430053479382274], [-0.10214743831476916, -0.08922329753690832, -0.06553460478541763, -0.09092166957262854, 0.7017938811419079, 0.7611560918613866, 0.5360190798357773, 0.08656351974449616, 1.0, 0.05317832602258957, 0.2725811509286675, -0.04736554939287554, -0.20339276996619574], [0.40464788422348025, 0.3779665465370335, 0.4460553800062969, 0.4443462033470353, -0.23318239914799782, -0.20393635212211156, 0.0733560620633416, 0.3521704946309225, 0.05317832602258957, 1.0, 0.3423169788274231, 0.2754088885006929, -0.2900564067169442], [0.05971642910309593, 0.058638110427519936, 0.15915921115562193, 0.17751286153508788, 0.16872822950566213, 0.22241409370956097, 0.16129448641102867, 0.048925499547473585, 0.2725811509286675, 0.3423169788274231, 1.0, 0.05660304978744206, -0.4149598576363191], [0.7514322080875707, 0.7674858617118254, 0.6924601017407318, 0.6632325184387817, -0.1588424495161699, -0.1532882121114213, 0.18383408175678068, 0.5304690629841042, -0.04736554939287554, 0.2754088885006929, 0.05660304978744206, 1.0, -0.1794707287924357], [-0.18738756573374957, -0.18035833116734007, -0.40192012177414765, -0.2917048115304653, -0.07162784005192464, -0.1540590997236346, -0.1786623533228129, -0.20430053479382274, -0.20339276996619574, -0.2900564067169442, -0.4149598576363191, -0.1794707287924357, 1.0]], "thr": 0.85};
+const Z=D.Z, LBL=D.labels, NM=D.names, C=D.corr, n=LBL.length;
+const sld=document.getElementById("sld"); sld.value=D.thr;
+function find(p,x){while(p[x]!==x){p[x]=p[p[x]];x=p[x];}return x;}
+function clustersAt(h){
+  let p=[...Array(n).keys()], rep={}; for(let i=0;i<n;i++)rep[i]=i;
+  for(let k=0;k<Z.length;k++){let a=Z[k][0],b=Z[k][1],d=Z[k][2];
+    if(d<=h){let fa=find(p,rep[a]),fb=find(p,rep[b]); if(fa!==fb)p[fa]=fb;}
+    rep[n+k]=rep[a];}
+  let g={}; for(let i=0;i<n;i++){let r=find(p,i);(g[r]=g[r]||[]).push(i);} return Object.values(g);
+}
+function central(ms){if(ms.length===1)return ms[0];let best=ms[0],bs=-2;
+  for(const m of ms){let s=0;for(const o of ms)if(o!==m)s+=C[m][o];s/=(ms.length-1);if(s>bs){bs=s;best=m;}}return best;}
+function render(){
+  const t=parseFloat(sld.value), h=1-t;
+  const cl=clustersAt(h).sort((a,b)=>b.length-a.length);
+  const reps=cl.map(central);
+  document.getElementById("tval").textContent=t.toFixed(2);
+  document.getElementById("cnt").textContent=cl.length;
+  document.getElementById("tot").textContent=n;
+  document.getElementById("kept").textContent=reps.map(i=>LBL[i]).sort().join("  ");
+  let html="";
+  for(let c=0;c<cl.length;c++){const ms=cl[c],r=central(ms);
+    if(ms.length===1){html+=`<div class="cl"><span class="rep">${LBL[ms[0]]}</span> <span class="tag">${NM[ms[0]]} &mdash; unique</span></div>`;}
+    else{let parts=ms.map(i=>i===r?`<span class="rep">${LBL[i]}</span>`:`<span class="drop">${LBL[i]}</span>`).join(", ");
+      html+=`<div class="cl">${parts} <span class="tag">&rarr; keep ${LBL[r]}</span></div>`;}}
+  document.getElementById("clusters").innerHTML=html;
+}
+sld.addEventListener("input",render); render();
+</script></body></html>
