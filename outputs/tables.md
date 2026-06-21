@@ -6,8 +6,8 @@ Auto-generated from the run. CSV versions of the larger tables are alongside.
 
 | Spec | slope | t (HAC) | p |
 |---|---|---|---|
-| baseline | -0.0009 | -2.50 | 1.2e-02 |
-| + time trend | -0.0004 | -1.52 | 1.3e-01 |
+| baseline | -0.0007 | -2.14 | 3.2e-02 |
+| + time trend | -0.0004 | -1.63 | 1.0e-01 |
 
 ## Regime (Welch t)
 
@@ -15,7 +15,7 @@ Auto-generated from the run. CSV versions of the larger tables are alongside.
 |---|---|
 | normal | 0.1518 |
 | worst decile | 0.1289 |
-| diff (t=-7.7, p=8.7e-14) | -0.0229 |
+| diff (t=-7.7, p=8.1e-14) | -0.0229 |
 
 ## Diversification / concentration
 
@@ -37,7 +37,7 @@ Auto-generated from the run. CSV versions of the larger tables are alongside.
 | VNQ-DBC | +0.35 | TLT-LQD | -0.59 |
 | SPY-DBC | +0.30 | TIP-LQD | -0.43 |
 | DBC-LQD | +0.30 | VNQ-TLT | -0.31 |
-| EFA-LQD | +0.25 | HYG-TLT | -0.27 |
+| EFA-LQD | +0.25 | HYG-TLT | -0.28 |
 | EFA-DBC | +0.24 | EFA-TLT | -0.19 |
 | SPY-LQD | +0.24 | SPY-TLT | -0.18 |
 
@@ -59,6 +59,6 @@ Auto-generated from the run. CSV versions of the larger tables are alongside.
 | TIP | +0.02 | +0.56 | -0.06 | +0.14 |
 | LQD | +0.18 | +0.47 | -0.32 | +0.11 |
 | GLD | +0.13 | +0.28 | +0.59 | +0.06 |
-| UUP | -0.23 | -0.21 | -0.46 | +0.63 |
+| UUP | -0.23 | -0.21 | -0.47 | +0.63 |
 
 _variance: PC1 37%, PC2 24%, PC3 13%, PC4 7%_

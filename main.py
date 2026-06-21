@@ -15,7 +15,19 @@ import config as C
 from src import data_loader, dcc_garch, analysis, viz, export
 
 
-def main(simulate: bool):
+def main(simulate: bool, diagnose_funding: bool = False):
+    # Quick command-line diagnostic: check the funding splice overlap, print R^2, exit.
+    if diagnose_funding:
+        fs = dict(getattr(C, "FUNDING_SPLICE", None) or {})
+        if not fs:
+            print("No FUNDING_SPLICE configured in config.py.")
+            return
+        fs.pop("method", None)
+        fs.pop("split", None)
+        print("Funding splice overlap diagnostic:")
+        data_loader.diagnose_funding_overlap(**fs)
+        return
+
     if simulate:
         rets, liq = data_loader.simulate()
         headline = liq.columns[0]
@@ -60,43 +72,56 @@ def main(simulate: bool):
           f"(t={model.tvalues[headline]:.2f})  |  +trend control: "
           f"{model_trend.params[headline]:+.4f} (t={model_trend.tvalues[headline]:.2f})")
 
-    # 4. Regime test
-    reg = analysis.regime_test(avg_corr, liq[headline], q=0.90)
-    print("\n=== Regime test (worst-liquidity decile vs rest) ===")
-    print(f"corr stress={reg['mean_stress']:.3f}  normal={reg['mean_normal']:.3f}  "
-          f"diff={reg['diff']:.3f}  t={reg['t']:.2f}  p={reg['p']:.2e}")
-
-    # 5. VAR / IRF (direction)
-    irf_data = None
-    try:
-        irf_data = analysis.var_irf(avg_corr, liq[headline])
-        print(f"\nVAR fitted (lag={irf_data['lag']}). Peak IRF of corr to a VIX shock: "
-              f"{irf_data['resp'][1:].max():+.4f}  (cumulative {irf_data['cum'][-1]:+.4f}).")
-    except Exception as e:
-        print(f"\nVAR/IRF skipped: {e}")
-
-    # 6. Figures
+    # 4-6. Per-proxy analysis + figures (VIX and, if injected, FUNDING -- each gets its
+    #      own set of figures with a _{proxy} filename suffix so nothing is overwritten).
     crises = None if simulate else C.CRISES
-    p1 = viz.plot_corr_vs_liquidity(avg_corr, liq[headline].rename(headline), crises)
-    p2 = viz.plot_regime(reg)
-    stats_d = {"slope": model.params[headline], "t": model.tvalues[headline],
-               "p": model.pvalues[headline]}
-    p3 = viz.plot_dose_response(avg_corr, liq[headline].rename(headline), stats=stats_d)
-    p4 = viz.plot_corr_regime_matrices(rets, liq[headline], q=0.90)
+    proxies = list(liq.columns)
+    per_proxy = {}
+    figs = []
 
-    # Sign-robust lens: does diversification collapse in stress?
-    conc = analysis.concentration_regime(rets, liq[headline], q=0.90)
-    print(f"\nDiversification -- effective bets: normal {conc['eff_normal']:.1f} "
-          f"-> stress {conc['eff_stress']:.1f}  |  PC1 share: "
-          f"{conc['pc1_normal']*100:.0f}% -> {conc['pc1_stress']*100:.0f}%")
-    p5 = viz.plot_diversification_regime(conc)
-    p6 = viz.plot_rolling_concentration(analysis.rolling_pc1_share(rets, window=126),
-                                        crises=crises)
-    figs = [p1, p2, p3, p4, p5, p6]
-    if irf_data is not None:
-        figs.append(viz.plot_irf(irf_data))
+    for proxy in proxies:
+        print(f"\n========== proxy: {proxy} ==========")
+        reg = analysis.regime_test(avg_corr, liq[proxy], q=0.90)
+        print(f"Regime test: stress={reg['mean_stress']:.3f}  normal={reg['mean_normal']:.3f}  "
+              f"diff={reg['diff']:.3f}  t={reg['t']:.2f}  p={reg['p']:.2e}")
 
-    # PC loadings -- name the risk dimensions
+        irf_data = None
+        try:
+            irf_data = analysis.var_irf(avg_corr, liq[proxy])
+            print(f"VAR (lag={irf_data['lag']}). Peak IRF of corr to a {proxy} shock: "
+                  f"{irf_data['resp'][1:].max():+.4f} (cumulative {irf_data['cum'][-1]:+.4f}).")
+        except Exception as e:
+            print(f"VAR/IRF skipped: {e}")
+
+        conc = analysis.concentration_regime(rets, liq[proxy], q=0.90)
+        print(f"Diversification -- effective bets: normal {conc['eff_normal']:.1f} -> "
+              f"stress {conc['eff_stress']:.1f}  |  PC1 share: {conc['pc1_normal']*100:.0f}% -> "
+              f"{conc['pc1_stress']*100:.0f}%")
+
+        stats_d = {"slope": model.params.get(proxy, float('nan')),
+                   "t": model.tvalues.get(proxy, float('nan')),
+                   "p": model.pvalues.get(proxy, float('nan'))}
+
+        figs += [
+            viz.plot_corr_vs_liquidity(avg_corr, liq[proxy].rename(proxy), crises,
+                                       outpath=f"outputs/corr_vs_liquidity_{proxy}.png"),
+            viz.plot_regime(reg, outpath=f"outputs/regime_{proxy}.png"),
+            viz.plot_dose_response(avg_corr, liq[proxy].rename(proxy), stats=stats_d,
+                                   outpath=f"outputs/dose_response_{proxy}.png"),
+            viz.plot_corr_regime_matrices(rets, liq[proxy], q=0.90,
+                                          outpath=f"outputs/corr_matrices_regime_{proxy}.png"),
+            viz.plot_diversification_regime(conc,
+                                            outpath=f"outputs/diversification_regime_{proxy}.png"),
+        ]
+        if irf_data is not None:
+            figs.append(viz.plot_irf(irf_data, proxy=proxy,
+                                     outpath=f"outputs/irf_{proxy}.png"))
+
+        per_proxy[proxy] = {"reg": reg, "conc": conc, "irf": irf_data}
+
+    # Proxy-independent figures (returns only)
+    figs.append(viz.plot_rolling_concentration(
+        analysis.rolling_pc1_share(rets, window=126), crises=crises))
     loadings, evr = analysis.pca_loadings(rets, k=4)
     figs.append(viz.plot_pc_loadings(loadings, evr))
 
@@ -104,13 +129,17 @@ def main(simulate: bool):
     for f in figs:
         print(f"  {f}")
 
-    # 7. Export all key numbers as markdown + CSV tables
+    # 7. Export tables for the headline proxy
+    h = per_proxy[headline]
     tbl = export.write_tables("outputs", headline, rets, avg_corr, liq[headline], 0.90,
-                              model, model_trend, reg, conc, irf_data, loadings, evr)
+                              model, model_trend, h["reg"], h["conc"], h["irf"], loadings, evr)
     print(f"\nTables: {tbl}")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--simulate", action="store_true", help="run offline on synthetic data")
-    main(ap.parse_args().simulate)
+    ap.add_argument("--diagnose-funding", action="store_true",
+                    help="check the funding splice overlap (R^2) and exit")
+    args = ap.parse_args()
+    main(args.simulate, args.diagnose_funding)

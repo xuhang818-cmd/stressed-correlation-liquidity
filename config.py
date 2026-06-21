@@ -34,7 +34,11 @@ HEADLINE_PROXY = "VIX"
 #   FUNDING_SPLICE = {"legacy_csv": "data/ted.csv",
 #                     "current_csv": "data/sofr_spread.csv",
 #                     "split": "2022-01-01", "method": "zscore"}
-FUNDING_SPLICE = None
+FUNDING_SPLICE = {
+    "legacy_csv": "data/TEDRATE.csv",
+    "current_spread": ("data/DCPF3M.csv", "data/SOFR.csv"),
+    "method": "zscore",
+}
 
 START = "2007-01-01"  # UUP/HYG inception ~2007 bounds the common sample for this basket
 END = None  # None -> today

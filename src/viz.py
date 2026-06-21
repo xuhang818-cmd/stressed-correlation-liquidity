@@ -10,43 +10,51 @@ NAVY, RED, BLUE = "#1f3864", "#c0504d", "#7f9bbf"
 
 
 def _ensure_writable(outpath):
-    """Ensure outpath's directory exists and is writable. Anchor relative paths to
-    the project root (parent of this src/ folder) so the output location does NOT
-    depend on the current working directory; fall back to a temp dir if the target
-    is unwritable (Windows permission locks, OneDrive, controlled-folder-access)."""
-    import tempfile
+    """Anchor a relative outpath to the project root (parent of this src/ folder) so
+    output location does NOT depend on the current working directory, make sure the
+    directory exists, and clear a read-only flag on an existing target. If the
+    directory cannot be written, RAISE a clear error instead of silently writing
+    elsewhere -- a silent fallback is exactly what hid stale PNGs before."""
     import stat
     if not os.path.isabs(outpath):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         outpath = os.path.join(root, outpath)
     d = os.path.dirname(outpath) or "."
+    os.makedirs(d, exist_ok=True)
+    probe = os.path.join(d, ".write_test")
     try:
-        os.makedirs(d, exist_ok=True)
-        probe = os.path.join(d, ".write_test")
         with open(probe, "w") as fh:
             fh.write("ok")
         os.remove(probe)
-        if os.path.exists(outpath):
-            try:
-                os.chmod(outpath, stat.S_IWRITE)
-            except OSError:
-                pass
-        return outpath
-    except OSError:
-        fb_dir = os.path.join(tempfile.gettempdir(), "scl_outputs")
-        os.makedirs(fb_dir, exist_ok=True)
-        fp = os.path.join(fb_dir, os.path.basename(outpath))
-        print(f"  [viz] '{d}' not writable; saving to {fp} instead", flush=True)
-        return fp
+    except OSError as e:
+        raise RuntimeError(
+            f"Cannot write to '{d}'. This usually means OneDrive 'controlled folder "
+            f"access' or a sync lock is blocking it. Move the project out of OneDrive "
+            f"(e.g. C:\\dev\\scl) or allow Python through controlled-folder-access. "
+            f"Underlying error: {e}")
+    if os.path.exists(outpath):
+        try:
+            os.chmod(outpath, stat.S_IWRITE)
+            os.remove(outpath)          # delete stale file so a failed write is visible
+        except OSError:
+            pass
+    return outpath
+
+
+def _savefig(fig, outpath):
+    """Save and then VERIFY the file actually landed; raise loudly if it did not."""
+    fig.savefig(outpath, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    if not os.path.exists(outpath):
+        raise RuntimeError(f"savefig reported success but '{outpath}' is missing.")
 
 
 def _save(fig, outpath, caption):
-    """Add a one-line caption strip under the figure, then save."""
+    """Add a one-line caption strip under the figure, then save (verified)."""
     fig.subplots_adjust(bottom=0.24)
     fig.text(0.5, 0.03, caption, ha="center", va="bottom", fontsize=7.5,
              color="#555", wrap=True)
-    fig.savefig(outpath, dpi=130, bbox_inches="tight")
-    plt.close(fig)
+    _savefig(fig, outpath)
 
 
 def plot_corr_vs_liquidity(avg_corr, liq_series, crises=None, outpath="outputs/corr_vs_liquidity.png"):
@@ -170,8 +178,7 @@ def plot_corr_regime_matrices(rets, liq_series, q=0.90,
            "correlation on each subsample.  ROLE: diagnoses WHICH pairs drive the average -- risk block converging "
            "(reds) while havens decouple/turn negative (blues).")
     fig.text(0.5, 0.01, cap, ha="center", va="bottom", fontsize=7.5, color="#555", wrap=True)
-    fig.savefig(outpath, dpi=130, bbox_inches="tight")
-    plt.close(fig)
+    _savefig(fig, outpath)
     return outpath
 
 
@@ -216,8 +223,8 @@ def plot_rolling_concentration(pc1_series, crises=None,
     return outpath
 
 
-def plot_irf(irf_data, outpath="outputs/irf_liquidity_to_corr.png"):
-    """Impulse response of average correlation to a one-SD liquidity (VIX) shock.
+def plot_irf(irf_data, proxy="VIX", outpath="outputs/irf_liquidity_to_corr.png"):
+    """Impulse response of average correlation to a one-SD liquidity shock.
     A positive hump after the shock = liquidity stress LEADS higher correlation."""
     outpath = _ensure_writable(outpath)
     h = irf_data["horizons"]
@@ -228,16 +235,16 @@ def plot_irf(irf_data, outpath="outputs/irf_liquidity_to_corr.png"):
                         alpha=0.25, label="95% CI")
     ax.plot(h, resp, color=NAVY, lw=1.8, marker="o", ms=3, label="IRF")
     ax.axhline(0, color="grey", lw=0.8)
-    ax.set_xlabel("days after a +1 SD liquidity (VIX) shock")
+    ax.set_xlabel(f"days after a +1 SD {proxy} shock")
     ax.set_ylabel("response of average correlation")
     note = "differenced series" if irf_data.get("differenced") else "levels"
-    ax.set_title(f"Does liquidity lead correlation?  IRF of rho to a VIX shock  "
+    ax.set_title(f"Does liquidity lead correlation?  IRF of rho to a {proxy} shock  "
                  f"(VAR lag={irf_data['lag']}, {note})")
     ax.legend()
-    cap = ("MEASURES: response of average correlation over ~20 days to a one-SD VIX shock.  METHOD: reduced-form "
-           "VAR on [VIX, rho], orthogonalized (Cholesky) IRF with VIX ordered first; 95% asymptotic band.  ROLE: "
-           "the lead-lag / direction test -- a positive hump means liquidity stress leads higher correlation.  "
-           "CAVEAT: the sign of the response can depend on the Cholesky ordering.")
+    cap = (f"MEASURES: response of average correlation over ~20 days to a one-SD {proxy} shock.  METHOD: reduced-form "
+           f"VAR on [{proxy}, rho], orthogonalized (Cholesky) IRF with {proxy} ordered first; 95% asymptotic band.  "
+           f"ROLE: the lead-lag / direction test -- a positive hump means liquidity stress leads higher correlation. "
+           f" CAVEAT: the sign of the response can depend on the Cholesky ordering.")
     _save(fig, outpath, cap)
     return outpath
 
@@ -264,6 +271,5 @@ def plot_pc_loadings(loadings, evr, outpath="outputs/pc_loadings.png"):
            "ROLE: names the risk dimensions -- e.g. PC1 = risk-on/off (risk assets + vs havens -), PC2 = "
            "rates/duration, etc.")
     fig.text(0.5, 0.005, cap, ha="center", va="bottom", fontsize=7.5, color="#555", wrap=True)
-    fig.savefig(outpath, dpi=130, bbox_inches="tight")
-    plt.close(fig)
+    _savefig(fig, outpath)
     return outpath

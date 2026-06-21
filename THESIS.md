@@ -108,6 +108,43 @@ So it is **not** "all correlations rise." Risk assets clump toward +1 while Trea
 (and to a lesser extent the dollar) move the other way; the two roughly cancel in the
 signed average. The flat number is the fingerprint of hedges *working*.
 
+### 5b. Who lines up with whom: clustering the stress regime
+
+`Δρ` tells us pairs move; clustering tells us into **which blocs**. On normal vs
+worst-decile days we build the return-correlation matrix, cluster the assets
+(1−corr distance, average linkage), and cut where corr > 0.50
+(`stress_clustering_<proxy>.png`, membership in `stress_groups.md`). Three findings, and
+the third is the most useful:
+
+1. **The split is real and stable.** Under VIX stress the risk bloc consolidates —
+   **SPY, EFA, VNQ, HYG and DBC** join one cluster (commodities, loosely attached in
+   calm, get pulled in), while **TLT/TIP** stay a separate haven bloc and **GLD, UUP**
+   stand alone. The dendrogram on stress days has a deep risk cluster that simply is not
+   there on normal days.
+
+2. **The two proxies flag almost *different* days.** VIX-stress days and FUNDING-stress
+   days overlap by only **Jaccard ≈ 0.20** (163 of ~483 shared). This *strengthens* the
+   robustness claim from Section 8: it is not that one stress definition is used twice —
+   two largely independent stress definitions (equity-vol vs funding) both yield the same
+   flat-average result. VIX is a market-stress gauge, FUNDING a financing one, and the
+   data confirm they are not the same thing.
+
+3. **Different stress sources take different transmission paths.** The blocs are not
+   identical across proxies, and each split is economically coherent:
+   - under **VIX (equity) stress**, *commodities (DBC)* are pulled into the risk bloc
+     (bootstrap co-occurrence with SPY ≈ 0.76 — fairly stable), while IG credit (LQD)
+     breaks out on its own — equity-vol contagion is a risk-asset phenomenon;
+   - under **FUNDING stress**, *HY and IG credit (HYG, LQD) move toward each other*
+     (co-occurrence ≈ 0.49 vs only ≈ 0.07 under VIX) — funding strain hits credit
+     spreads directly. The direction is clear, but at 0.49 the grouping is **suggestive,
+     not stable**: we report it as a tendency, not a firm cluster.
+
+   This is the payoff of separating market- from funding-liquidity: "diversification
+   breaks down" is not one mechanism but several, and which assets converge depends on
+   *which* stress is hitting. Cluster stability (co-occurrence over 1,000 block
+   bootstraps, `cluster_stability_<proxy>.png`) is reported so robust blocs (the core
+   risk cluster, SPY–EFA ≈ 1.00) are not confused with fragile ones.
+
 ---
 
 ## 6. Reconcile with a sign-robust lens (factor concentration)
@@ -124,9 +161,58 @@ factor lens, not the signed mean. `rolling_concentration.png` shows PC1 share is
 strongly regime-dependent over time (range ≈30–63%, peaks around 2012 and 2022–23),
 tracking macro regimes more than isolated VIX spikes. (Math: `THEORY.md` Part 5.)
 
+**What PC1 actually is — a bipolar axis, not "everything falls together."** PC1 is the
+risk-on/risk-off direction: risk assets load *positively*, havens (TLT, GLD, often UUP)
+load *negatively* — read the first column of `pc_loadings.png`. A rising PC1 share does
+not mean all assets drop in unison; it means more of the total variance is governed by
+this *single* axis, with the basket splitting to its two poles (risk end down together,
+haven end up together). The signed average correlation misses this because the positive
+(risk–risk) and negative (risk–haven) pairs cancel; PC1 does not, because variance uses
+the *square* of the loading, so a strongly negative haven still adds to concentration.
+That is the mathematical reason the two metrics give opposite-looking pictures and both
+are right.
+
+**Is the shift real? (block bootstrap.)** A 1,000-replication block bootstrap (21-day
+blocks, preserving volatility clustering; `robustness.py`) puts the stress−normal shift
+at **−0.47 effective bets, 95% CI [−0.77, −0.17]** and **+8pp PC1 share, CI [+5, +11]**,
+both with bootstrap p < 0.001. The direction is highly robust — but the magnitude is
+*moderate* (≈4.5 → ≈4.0 bets): statistically firm, economically modest. The split is
+also stable to the stress cutoff (85/95th pct give the same picture as 90th).
+
+**Important scope condition.** This concentration result is a *market*-stress (VIX)
+phenomenon. Re-run on the FUNDING proxy, the effective-bets change is ~0 or slightly
+positive — funding-stress days do *not* show the same factor concentration. So
+"diversification erodes in stress" holds for equity-vol stress, not for funding stress;
+the two liquidity types are different mechanisms, not one effect seen twice.
+
 **This reconciles the project:** "correlations → 1 in a crisis" is true as *factor
-concentration*, not as *signed average correlation*, and its magnitude is sensitive to
-basket composition.
+concentration*, not as *signed average correlation*; it is statistically real but
+moderate, specific to market-stress, and sensitive to basket composition.
+
+---
+
+## 6b. So what? Why this matters for a portfolio
+
+The practical payoff is a way to tell *real* diversification from *nominal*
+diversification:
+
+- **Holding more tickers is not holding more bets.** Ten assets here are worth only
+  ~4.5 independent bets (the participation ratio). Adding another broad-equity ETF lows
+  the count further toward redundancy, not safety — it doubles down on a bet you already
+  hold.
+- **Diversification has to be across *factors*, not asset labels.** Since stress is
+  governed by one risk-on/off axis, an effective hedge must be roughly *orthogonal* to
+  PC1 — an asset whose PC1 loading is near zero (GLD/UUP are the candidates here), not
+  just "a different ticker."
+- **The cushion thins exactly when needed.** Effective bets fall and PC1 share rises in
+  market stress — diversification is weakest in the regime you bought it for. Note this
+  is *factor concentration*, not the usual (and, here, false) "average correlation spikes"
+  story.
+- **Credit-desk hook.** If IG and HY are driven by the same spread factor in funding
+  stress (the suggestive HYG–LQD signal, Section 5b), "I hold different ratings, so I'm
+  diversified" can be an illusion. The framework turns "am I actually diversified?" into
+  two measurable numbers — effective bets and PC1 share — and shows how they move by
+  regime.
 
 ---
 
@@ -145,7 +231,41 @@ ordering and read direction, not strict causality. (Math: `THEORY.md` Part 6.)
 
 ---
 
-## 8. Limitations / identification
+## 8. Robustness: a funding-liquidity proxy
+
+VIX is a *market*-stress proxy — it blends volatility fear with genuine funding strain.
+The Brunnermeier–Pedersen mechanism is specifically a *funding* one, so as a robustness
+check we rebuild a continuous funding-stress series and re-run the whole pipeline on it.
+
+The series is spliced from public FRED data: the legacy leg is the TED spread (TEDRATE,
+which ends in Jan 2022 when USD LIBOR was retired) and the current leg is a CP−SOFR
+spread (3-month financial commercial paper minus SOFR — unsecured minus secured, the
+closest modern analogue to TED). Because the two legs differ in level and scale, they are
+joined on a *standardized* (z-score) scale rather than spliced raw.
+
+Two findings, both reported rather than hidden:
+
+- **The two regimes are not the same series, numerically.** Over their 2018–2022 overlap,
+  a linear fit of TED on CP−SOFR gives only **R² ≈ 0.38**. That is *why* the splice uses
+  z-score, not an affine overlap map: LIBOR-era and SOFR-era funding stress are related
+  but not interchangeable. The low R² is itself a result worth stating.
+- **The conclusion is robust to the proxy.** Run on FUNDING, the headline picture is
+  unchanged: the signed-average regime difference stays small/negative, and in the joint
+  regression the FUNDING coefficient is insignificant (≈ −0.005, p ≈ 0.33). Crucially,
+  this is *not* because the two proxies pick the same days — they overlap by only
+  **Jaccard ≈ 0.20** (Section 5b). Two largely independent stress definitions — equity
+  volatility and funding strain — independently produce the same flat-average result,
+  which is stronger evidence than a single proxy could give. The pipeline emits a
+  parallel set of figures per proxy (`*_VIX.png` and `*_FUNDING.png`) for side-by-side
+  reading; the `corr_vs_liquidity_*` and `irf_*` pairs are where the proxies differ most.
+
+> *Caveat:* numerically continuous ≠ economically identical (TED carries bank credit risk;
+> SOFR is secured). FUNDING is a robustness lens, not the primary series. A still cleaner
+> funding gauge (e.g. FRA-OIS or bank CDS) is a natural next refinement.
+
+---
+
+## 9. Limitations / identification
 
 - **Secular trend confound.** `ρ_t` trends up over the sample and the biggest VIX spikes
   (2008, 2020) sit in the low-correlation early years, so the pooled Section-4 result
@@ -160,7 +280,7 @@ ordering and read direction, not strict causality. (Math: `THEORY.md` Part 6.)
 
 ---
 
-## 9. Conclusion *(DRAFT — your call)*
+## 10. Conclusion *(DRAFT — your call)*
 
 In a PCA-pruned, genuinely diversified basket, the textbook claim that *average*
 cross-asset correlation spikes in stress is weak-to-absent (regime diff ≈ −0.02). The
@@ -178,8 +298,18 @@ causal/lead-lag reading awaits the IRF and a trend-controlled regression.
   bars; rolling PC1; IRF figure; PC loadings figure; auto-exported data tables (markdown
   + CSV).
 - Done (Day 2): spliced continuous funding proxy (`load_spliced_funding`, z-score or
-  overlap-affine, from two local CSVs; activate via `config.FUNDING_SPLICE`) and a
-  self-contained interactive basket explorer (`outputs/basket_explorer.html`, drag the
-  threshold to re-cut the tree in-browser; its clustering matches scipy `fcluster`).
-- Optional next: name PC1–PC4 from the loadings; flip the IRF Cholesky order for
-  robustness; read the trend-controlled coefficient.
+  overlap-affine, from local FRED CSVs; built from three raw files via `current_spread`;
+  activate via `config.FUNDING_SPLICE`; overlap R² diagnostic) and a self-contained
+  interactive basket explorer (`outputs/basket_explorer.html`).
+- Done: full pipeline re-run per liquidity proxy (VIX and FUNDING), parallel figure sets
+  `*_VIX.png` / `*_FUNDING.png`; conclusion confirmed robust to the proxy.
+- Done: explicit stress-regime asset grouping (`stress_clustering.py`) — VIX vs FUNDING
+  stress-day overlap (Jaccard ≈ 0.20) timeline, and normal-vs-stress dendrograms + group
+  tables per proxy; surfaced the two transmission paths (VIX→commodities into risk bloc;
+  FUNDING→HY+IG credit merge).
+- Done: robustness suite (`robustness.py`) — block-bootstrap CIs for the concentration
+  shift (−0.47 eff bets, +8pp PC1, both p<0.001), cluster-stability co-occurrence
+  matrices, and 85/90/95 threshold sensitivity incl. Jaccard; established the result is
+  significant-but-moderate and market-stress-specific.
+- Optional: name PC1–PC4 from the loadings; flip the IRF Cholesky order; FDR-correct the
+  per-pair Δρ; a cleaner funding gauge (FRA-OIS / bank CDS); literature references.

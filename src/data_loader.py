@@ -110,16 +110,70 @@ def simulate(n_assets=5, T=2500, seed=7):
 
 
 # ===================== Day 2: spliced funding proxy =====================
-# A continuous funding-stress proxy built from two local CSVs (no FRED): a legacy
-# leg (e.g. TED/LIBOR-era, pre-2022) and a current leg (e.g. a SOFR-based spread),
-# each [date, value] with higher = more stress. Export them from Bloomberg/Terminal.
-# Splice on SCALE, not level, then inject as a "FUNDING" column -- analysis.py treats
-# every liquidity column generically, so nothing else changes. Numerically continuous
-# != economically identical (TED carries bank credit risk; SOFR is secured), so use it
-# as a robustness proxy.
-def load_spliced_funding(legacy_csv, current_csv, split="2022-01-01",
-                         method="zscore", overlap=("2018-01-01", "2022-12-31")):
-    """Return one daily 'FUNDING' Series spliced from two CSVs.
+# A continuous funding-stress proxy from local FRED CSVs. Legacy leg: TED spread
+# (TEDRATE, pre-2022). Current leg: either a ready-made spread, or built here from
+# two raw files via current_spread=(DCPF3M.csv, SOFR.csv) -> CP minus SOFR (unsecured
+# minus secured), the closest modern analogue to TED. You only download the raw FRED
+# files; the subtraction and date-alignment happen in code. Splice on SCALE, then
+# inject as a "FUNDING" column -- analysis.py treats every liquidity column
+# generically. Numerically continuous != economically identical (TED carries bank
+# credit risk; SOFR is secured), so use it as a robustness proxy. Run
+# diagnose_funding_overlap() first to pick method ('overlap' vs 'zscore').
+def _build_current(current_csv=None, current_spread=None):
+    """Build the post-2022 'current' funding leg.
+
+    current_csv     : one ready-made spread CSV; OR
+    current_spread  : (minuend_csv, subtrahend_csv) -> the code aligns them on
+                      common dates and subtracts, e.g. ("DCPF3M.csv", "SOFR.csv")
+                      gives the CP - SOFR spread (unsecured minus secured). You only
+                      download the two raw FRED files; no manual subtraction needed.
+    """
+    if (current_csv is None) == (current_spread is None):
+        raise ValueError("pass exactly one of current_csv or current_spread")
+    if current_csv is not None:
+        return _load_csv_series(current_csv).sort_index()
+    minuend, subtrahend = current_spread
+    a = _load_csv_series(minuend)
+    b = _load_csv_series(subtrahend)
+    j = pd.concat([a.rename("a"), b.rename("b")], axis=1).dropna()   # align on common dates
+    spread = (j["a"] - j["b"]).sort_index()
+    spread.name = "CURRENT_SPREAD"
+    return spread
+
+
+def diagnose_funding_overlap(legacy_csv, current_csv=None, current_spread=None,
+                             overlap=("2018-04-01", "2022-01-21")):
+    """Check whether the two legs line up linearly over their overlap window.
+    Prints n / R^2 / slope / intercept and returns them. High R^2 -> method='overlap'
+    is justified; low R^2 -> the legs behave differently, use method='zscore'."""
+    legacy = _load_csv_series(legacy_csv).sort_index()
+    current = _build_current(current_csv, current_spread)
+    j = pd.concat([legacy.rename("L"), current.rename("C")], axis=1).loc[
+        overlap[0]:overlap[1]].dropna()
+    n = len(j)
+    if n < 30:
+        print(f"Overlap diagnostic: only {n} common days in {overlap} -- too short; "
+              f"use method='zscore'.")
+        return {"n": n, "r2": float("nan"), "slope": float("nan"), "intercept": float("nan")}
+    a, b = np.polyfit(j["C"].values, j["L"].values, 1)
+    pred = a * j["C"].values + b
+    ss_res = ((j["L"].values - pred) ** 2).sum()
+    ss_tot = ((j["L"].values - j["L"].values.mean()) ** 2).sum()
+    r2 = 1 - ss_res / ss_tot
+    print(f"Overlap {overlap}: n={n}, R^2={r2:.3f}, legacy = {a:+.3f}*current {b:+.3f}")
+    print("  -> R^2 high (>~0.6): method='overlap' OK.  R^2 low: use method='zscore'.")
+    return {"n": n, "r2": float(r2), "slope": float(a), "intercept": float(b)}
+
+
+def load_spliced_funding(legacy_csv, current_csv=None, current_spread=None,
+                         split="2022-01-21", method="zscore",
+                         overlap=("2018-04-01", "2022-01-21")):
+    """Return one daily 'FUNDING' Series spliced from a legacy leg and a current leg.
+
+    legacy_csv      : the pre-2022 leg, e.g. "data/TEDRATE.csv".
+    current_csv     : a ready-made post-2022 spread CSV; OR
+    current_spread  : (minuend_csv, subtrahend_csv), e.g.
+                      ("data/DCPF3M.csv", "data/SOFR.csv") -> CP - SOFR is built here.
 
     method='zscore'  : standardize each leg by its own mean/sd, then join at `split`
                        (puts both on a 'standard deviations of stress' scale).
@@ -128,7 +182,7 @@ def load_spliced_funding(legacy_csv, current_csv, split="2022-01-01",
                        (keeps the legacy leg's units).
     """
     legacy = _load_csv_series(legacy_csv).sort_index()
-    current = _load_csv_series(current_csv).sort_index()
+    current = _build_current(current_csv, current_spread)
 
     if method == "zscore":
         lz = (legacy - legacy.mean()) / legacy.std()
